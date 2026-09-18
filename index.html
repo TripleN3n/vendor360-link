@@ -4,8 +4,7 @@
 <meta charset="utf-8">
 <title>VENDOR360</title>
 <meta name="robots" content="noindex,nofollow">
-<meta http-equiv="refresh" content="0; url=https://configure-moss-receipt-cloudy.trycloudflare.com">
-<script>location.replace("https://configure-moss-receipt-cloudy.trycloudflare.com");</script>
+<meta name="viewport" content="width=device-width,initial-scale=1">
 <style>
   body{margin:0;min-height:100vh;display:grid;place-items:center;
        font:15px/1.6 Inter,system-ui,Segoe UI,Arial,sans-serif;
@@ -20,8 +19,28 @@
 <body>
   <div class="c">
     <div class="m">VENDOR<span>360</span></div>
-    <p class="s">Taking you to the portal&hellip;</p>
-    <p class="s">If nothing happens, <a href="https://configure-moss-receipt-cloudy.trycloudflare.com">open it here</a>.</p>
+    <p class="s" id="msg">Taking you to the portal&hellip;</p>
+    <p class="s" id="alt"></p>
+    <noscript>
+      <p class="s">Open the portal here: <a href="https://configure-moss-receipt-cloudy.trycloudflare.com">https://configure-moss-receipt-cloudy.trycloudflare.com</a></p>
+    </noscript>
   </div>
+<script>
+// Always ask for the live target, never a cached one.
+fetch("target.json?t=" + Date.now(), {cache: "no-store"})
+  .then(function (r) { return r.json(); })
+  .then(function (d) {
+    if (!d || !d.url) throw new Error("no target");
+    document.getElementById("alt").innerHTML =
+      'If nothing happens, <a href="' + d.url + '">open it here</a>.';
+    location.replace(d.url);
+  })
+  .catch(function () {
+    document.getElementById("msg").textContent =
+      "VENDOR360 is not running right now.";
+    document.getElementById("alt").textContent =
+      "It runs on a laptop that has to be switched on. Try again shortly.";
+  });
+</script>
 </body>
 </html>
