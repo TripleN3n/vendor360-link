@@ -24,73 +24,104 @@
     <div class="m">VENDOR<span>360</span></div>
     <p class="s" id="msg"><span class="d"></span>Connecting to the portal&hellip;</p>
     <p class="s" id="alt"></p>
-    <noscript>
-      <p class="s">JavaScript is switched off. The live address is in
-      <a href="target.json">target.json</a>.</p>
-    </noscript>
+    <!-- Visible by default and hidden by the first line of script below. If the
+         script ever fails to parse, this is what the visitor sees instead of a
+         page that says "connecting" forever. -->
+    <p class="s" id="fallback">
+      If this page does not move on its own, the live address is in
+      <a href="target.json">target.json</a>.
+    </p>
   </div>
 <script>
+document.getElementById("fallback").style.display = "none";
+
 // This page is the permanent address. The portal itself lives behind a tunnel
 // whose hostname changes whenever it restarts, so the job here is: find the
-// current hostname, make sure it is actually answering, and only then go.
+// current hostname, check it is actually answering, and only then go there.
 //
-// Two places know the hostname. GitHub's API reads the repo directly and is
-// fresh within a minute, but allows 60 calls an hour per visitor, so it is
-// asked at most every 20 seconds. The Pages copy of target.json sits behind a
-// CDN that ignores cache-busting and can lag up to ten minutes; it is the
-// fallback. Whichever answers, the hostname is probed by loading a small image
-// from it: a live tunnel serves the picture, a dead one serves Cloudflare's
-// error page, which is not a picture. No redirect happens until that succeeds,
-// so a visitor is never dropped onto an error page and this tab keeps trying.
+// Two places know the hostname. GitHub's API reads the repository directly and
+// is fresh within a minute, but allows 60 calls an hour per visitor, so it is
+// asked at most once every 20 seconds. The Pages copy of target.json sits
+// behind a CDN that ignores cache-busting queries and can lag ten minutes; it
+// is the fallback. Whichever answers, the hostname is then probed by loading a
+// small image from it: a live tunnel serves the picture, a dead one serves
+// Cloudflare's error page, which is not a picture. No redirect happens until
+// that probe succeeds, so a visitor is never dropped onto an error page, and
+// this tab keeps checking and opens the portal the moment it is back.
+//
+// Written without a single backslash on purpose: this file is embedded in
+// Python tooling, and an escape sequence that survives one hop but not the
+// next produced exactly one broken character here before - a regex literal
+// split across two lines - which is a parse error that silently disables
+// everything on the page. tools/supervise.py runs `node --check` over this
+// script before publishing it.
 var API = "https://api.github.com/repos/TripleN3n/vendor360-link/contents/target.json?ref=master";
 var PROBE = "/vista-logo.png";
-var msg = document.getElementById("msg"), alt = document.getElementById("alt");
-var lastApi = 0, attempt = 0;
+var NOT_BASE64 = new RegExp("[^A-Za-z0-9+/=]", "g");
+var msg = document.getElementById("msg");
+var alt = document.getElementById("alt");
+var lastApi = 0;
+var attempt = 0;
 
 function show(text, detail) {
   msg.innerHTML = '<span class="d"></span>' + text;
   alt.innerHTML = detail || "";
 }
+
 function fromApi() {
   var now = Date.now();
   if (now - lastApi < 20000) return Promise.reject(new Error("api throttled"));
   lastApi = now;
   return fetch(API, {cache: "no-store"})
-    .then(function (r) { if (!r.ok) throw new Error("api " + r.status); return r.json(); })
-    .then(function (d) { return JSON.parse(atob(String(d.content || "").replace(/
-/g, ""))); });
+    .then(function (r) {
+      if (!r.ok) throw new Error("api " + r.status);
+      return r.json();
+    })
+    .then(function (d) {
+      return JSON.parse(atob(String(d.content || "").replace(NOT_BASE64, "")));
+    });
 }
+
 function fromPages() {
   return fetch("target.json?t=" + Date.now(), {cache: "no-store"})
     .then(function (r) { return r.json(); });
 }
+
 function probe(url) {
   return new Promise(function (ok, bad) {
     var img = new Image();
-    var timer = setTimeout(function () { img.src = ""; bad(); }, 8000);
+    var timer = setTimeout(function () { img.src = ""; bad(new Error("probe timeout")); }, 8000);
     img.onload = function () { clearTimeout(timer); ok(); };
-    img.onerror = function () { clearTimeout(timer); bad(); };
+    img.onerror = function () { clearTimeout(timer); bad(new Error("probe failed")); };
     img.src = url + PROBE + "?t=" + Date.now();
   });
 }
+
 function again(text, url) {
-  var link = url ? ' <a href="' + url + '">Try the current address anyway</a>.' : "";
+  var link = url ? ' <a href="' + url + '">Open the current address anyway</a>.' : "";
   show(text,
     "This page keeps checking and opens the portal the moment it is back. " +
-    "Keep the tab open. Bookmark <b>this</b> address - it never changes." + link);
+    "Keep the tab open. Bookmark <b>this</b> address, it never changes." + link);
   setTimeout(tick, attempt < 12 ? 5000 : 15000);
 }
+
 function tick() {
   attempt++;
-  fromApi().catch(fromPages)
+  fromApi()
+    .catch(fromPages)
     .then(function (d) {
       if (!d || !d.url) throw new Error("no target");
       return probe(d.url).then(
-        function () { show("Connected. Opening the portal&hellip;"); location.replace(d.url); },
-        function () { again("VENDOR360 is reconnecting&hellip;", d.url); });
+        function () {
+          show("Connected. Opening the portal&hellip;");
+          location.replace(d.url);
+        },
+        function () { again("VENDOR360 is reconnecting&hellip;", d.url); }
+      );
     })
     .catch(function () { again("Looking for VENDOR360&hellip;", null); });
 }
+
 tick();
 </script>
 </body>
