@@ -56,7 +56,12 @@ document.getElementById("fallback").style.display = "none";
 // everything on the page. tools/supervise.py runs `node --check` over this
 // script before publishing it.
 var API = "https://api.github.com/repos/TripleN3n/vendor360-link/contents/target.json?ref=master";
-var PROBE = "/vista-logo.png";
+// A 1x1 transparent PNG that exists only to be fetched. The logo was used
+// first and is 14 KB, which took 8 to 15 seconds through a quick tunnel
+// routed via a distant edge - longer than the probe timeout, so a healthy
+// app was reported as down. This is about 70 bytes, leaving round-trip
+// latency as the only cost.
+var PROBE = "/alive.png";
 var NOT_BASE64 = new RegExp("[^A-Za-z0-9+/=]", "g");
 var msg = document.getElementById("msg");
 var alt = document.getElementById("alt");
@@ -90,7 +95,7 @@ function fromPages() {
 function probe(url) {
   return new Promise(function (ok, bad) {
     var img = new Image();
-    var timer = setTimeout(function () { img.src = ""; bad(new Error("probe timeout")); }, 8000);
+    var timer = setTimeout(function () { img.src = ""; bad(new Error("probe timeout")); }, 20000);
     img.onload = function () { clearTimeout(timer); ok(); };
     img.onerror = function () { clearTimeout(timer); bad(new Error("probe failed")); };
     img.src = url + PROBE + "?t=" + Date.now();
