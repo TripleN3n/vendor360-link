@@ -9,125 +9,39 @@
   body{margin:0;min-height:100vh;display:grid;place-items:center;
        font:15px/1.6 Inter,system-ui,Segoe UI,Arial,sans-serif;
        background:#fbfaf8;color:#18181b}
-  .c{text-align:center;max-width:34rem;padding:2rem}
+  .c{text-align:center;max-width:32rem;padding:2rem}
   .m{font-size:22px;font-weight:800;letter-spacing:-.02em;color:#3d0b8a}
   .m span{color:#b026ff}
   .s{margin-top:.75rem;color:#71717a;font-size:13.5px}
-  .d{display:inline-block;width:8px;height:8px;border-radius:50%;background:#b026ff;
-     margin-right:.5rem;vertical-align:middle;animation:p 1.2s ease-in-out infinite}
-  @keyframes p{0%,100%{opacity:.25}50%{opacity:1}}
   a{color:#6a15c4}
 </style>
 </head>
 <body>
   <div class="c">
     <div class="m">VENDOR<span>360</span></div>
-    <p class="s" id="msg"><span class="d"></span>Connecting to the portal&hellip;</p>
+    <p class="s" id="msg">Taking you to the portal&hellip;</p>
     <p class="s" id="alt"></p>
-    <!-- Visible by default and hidden by the first line of script below. If the
-         script ever fails to parse, this is what the visitor sees instead of a
-         page that says "connecting" forever. -->
-    <p class="s" id="fallback">
-      If this page does not move on its own, the live address is in
-      <a href="target.json">target.json</a>.
-    </p>
+    <noscript>
+      <p class="s">JavaScript is switched off. The live address is in
+      <a href="target.json">target.json</a>.</p>
+    </noscript>
   </div>
 <script>
-document.getElementById("fallback").style.display = "none";
-
-// This page is the permanent address. The portal itself lives behind a tunnel
-// whose hostname changes whenever it restarts, so the job here is: find the
-// current hostname, check it is actually answering, and only then go there.
-//
-// Two places know the hostname. GitHub's API reads the repository directly and
-// is fresh within a minute, but allows 60 calls an hour per visitor, so it is
-// asked at most once every 20 seconds. The Pages copy of target.json sits
-// behind a CDN that ignores cache-busting queries and can lag ten minutes; it
-// is the fallback. Whichever answers, the hostname is then probed by loading a
-// small image from it: a live tunnel serves the picture, a dead one serves
-// Cloudflare's error page, which is not a picture. No redirect happens until
-// that probe succeeds, so a visitor is never dropped onto an error page, and
-// this tab keeps checking and opens the portal the moment it is back.
-//
-// Written without a single backslash on purpose: this file is embedded in
-// Python tooling, and an escape sequence that survives one hop but not the
-// next produced exactly one broken character here before - a regex literal
-// split across two lines - which is a parse error that silently disables
-// everything on the page. tools/supervise.py runs `node --check` over this
-// script before publishing it.
-var API = "https://api.github.com/repos/TripleN3n/vendor360-link/contents/target.json?ref=master";
-// A 1x1 transparent PNG that exists only to be fetched. The logo was used
-// first and is 14 KB, which took 8 to 15 seconds through a quick tunnel
-// routed via a distant edge - longer than the probe timeout, so a healthy
-// app was reported as down. This is about 70 bytes, leaving round-trip
-// latency as the only cost.
-var PROBE = "/alive.png";
-var NOT_BASE64 = new RegExp("[^A-Za-z0-9+/=]", "g");
-var msg = document.getElementById("msg");
-var alt = document.getElementById("alt");
-var lastApi = 0;
-var attempt = 0;
-
-function show(text, detail) {
-  msg.innerHTML = '<span class="d"></span>' + text;
-  alt.innerHTML = detail || "";
-}
-
-function fromApi() {
-  var now = Date.now();
-  if (now - lastApi < 20000) return Promise.reject(new Error("api throttled"));
-  lastApi = now;
-  return fetch(API, {cache: "no-store"})
-    .then(function (r) {
-      if (!r.ok) throw new Error("api " + r.status);
-      return r.json();
-    })
-    .then(function (d) {
-      return JSON.parse(atob(String(d.content || "").replace(NOT_BASE64, "")));
-    });
-}
-
-function fromPages() {
-  return fetch("target.json?t=" + Date.now(), {cache: "no-store"})
-    .then(function (r) { return r.json(); });
-}
-
-function probe(url) {
-  return new Promise(function (ok, bad) {
-    var img = new Image();
-    var timer = setTimeout(function () { img.src = ""; bad(new Error("probe timeout")); }, 20000);
-    img.onload = function () { clearTimeout(timer); ok(); };
-    img.onerror = function () { clearTimeout(timer); bad(new Error("probe failed")); };
-    img.src = url + PROBE + "?t=" + Date.now();
+// Always ask for the live target, never a cached one.
+fetch("target.json?t=" + Date.now(), {cache: "no-store"})
+  .then(function (r) { return r.json(); })
+  .then(function (d) {
+    if (!d || !d.url) throw new Error("no target");
+    document.getElementById("alt").innerHTML =
+      'If nothing happens, <a href="' + d.url + '">open it here</a>.';
+    location.replace(d.url);
+  })
+  .catch(function () {
+    document.getElementById("msg").textContent =
+      "VENDOR360 is not running right now.";
+    document.getElementById("alt").textContent =
+      "It runs on a laptop that has to be switched on. Try again shortly.";
   });
-}
-
-function again(text, url) {
-  var link = url ? ' <a href="' + url + '">Open the current address anyway</a>.' : "";
-  show(text,
-    "This page keeps checking and opens the portal the moment it is back. " +
-    "Keep the tab open. Bookmark <b>this</b> address, it never changes." + link);
-  setTimeout(tick, attempt < 12 ? 5000 : 15000);
-}
-
-function tick() {
-  attempt++;
-  fromApi()
-    .catch(fromPages)
-    .then(function (d) {
-      if (!d || !d.url) throw new Error("no target");
-      return probe(d.url).then(
-        function () {
-          show("Connected. Opening the portal&hellip;");
-          location.replace(d.url);
-        },
-        function () { again("VENDOR360 is reconnecting&hellip;", d.url); }
-      );
-    })
-    .catch(function () { again("Looking for VENDOR360&hellip;", null); });
-}
-
-tick();
 </script>
 </body>
 </html>
